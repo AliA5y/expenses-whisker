@@ -29,6 +29,9 @@ jobs:
 
       - name: Prepare Whisker Framework
         run: |
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.cargo/bin:$PATH"
+
           # If whisker-repo is not in workspace, clone official repository
           if [ ! -d "whisker-repo" ]; then
             echo "Cloning Whisker framework..."
@@ -79,6 +82,8 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -derivedDataPath build \
+            -skipPackagePluginValidation \
+            -skipMacroValidation \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
