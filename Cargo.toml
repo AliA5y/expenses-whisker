@@ -1,0 +1,32 @@
+[workspace]
+members = ["."]
+resolver = "2"
+
+[package]
+name = "whisker-expense"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["rlib"]
+
+[[bin]]
+name = "whisker-config"
+path = "whisker.rs"
+required-features = ["whisker-config"]
+test = false
+bench = false
+
+[features]
+whisker-config = ["whisker-cng/generate"]
+
+[dependencies]
+whisker = { path = "../whisker-repo/crates/whisker" }
+whisker-cng = { path = "../whisker-repo/crates/whisker-cng", default-features = false }
+whisker-icons = { path = "../whisker-repo/packages/whisker-icons" }
+whisker-svg = { path = "../whisker-repo/packages/whisker-svg" }
+whisker-input = { path = "../whisker-repo/packages/whisker-input" }
+whisker-local-store = { path = "../whisker-repo/packages/whisker-local-store" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

@@ -1,0 +1,117 @@
+name: Build iOS App (.ipa)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build iOS IPA & Xcode App
+    runs-on: macos-14
+    steps:
+      - name: Checkout ExpenseFlow Repository
+        uses: actions/checkout@v4
+        with:
+          path: expense-workspace
+
+      - name: Setup macOS & Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios, aarch64-apple-ios-sim, x86_64-apple-ios
+
+      - name: Prepare Whisker Framework
+        run: |
+          # If whisker-repo is not in workspace, clone official repository
+          if [ ! -d "whisker-repo" ]; then
+            echo "Cloning Whisker framework..."
+            git clone --depth 1 https://github.com/whiskerrs/whisker.git whisker-repo
+          fi
+
+          # Install whisker CLI
+          echo "Building and installing whisker-cli..."
+          cargo install --path whisker-repo/crates/whisker-cli --locked || cargo install --path whisker-repo/crates/whisker-cli
+
+      - name: Verify Whisker Environment
+        run: |
+          whisker doctor
+
+      - name: Generate and Compile iOS Host Project
+        run: |
+          # If repository was cloned with nested folder structure, locate expense
+          if [ -d "expense-workspace/expense" ]; then
+            cd expense-workspace/expense
+          else
+            cd expense-workspace
+          fi
+
+          # Link platforms if needed
+          if [ ! -e "platforms" ]; then
+            ln -s ../../whisker-repo/platforms platforms 2>/dev/null || true
+          fi
+
+          echo "Generating iOS project..."
+          cargo run --bin whisker-config --features whisker-config -- ios
+
+          echo "Building Rust dylib for aarch64-apple-ios (iPhone Device)..."
+          cargo rustc --lib --target aarch64-apple-ios --release
+
+      - name: Build with xcodebuild
+        run: |
+          if [ -d "expense-workspace/expense" ]; then
+            APP_DIR="expense-workspace/expense"
+          else
+            APP_DIR="expense-workspace"
+          fi
+          cd "$APP_DIR/gen/ios"
+
+          echo "Building Release scheme for iOS Device..."
+          xcodebuild \
+            -project ExpenseFlow.xcodeproj \
+            -scheme ExpenseFlow \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package into .IPA (For Sideloading / AltStore / Sideloadly)
+        run: |
+          if [ -d "expense-workspace/expense" ]; then
+            APP_DIR="expense-workspace/expense"
+          else
+            APP_DIR="expense-workspace"
+          fi
+          cd "$APP_DIR/gen/ios"
+
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "ExpenseFlow.app" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            APP_PATH=$(find build -name "*.app" | head -n 1)
+          fi
+
+          echo "Found app at: $APP_PATH"
+          mkdir -p Payload
+          cp -r "$APP_PATH" Payload/
+          zip -r ExpenseFlow.ipa Payload/
+          echo "Created ExpenseFlow.ipa successfully!"
+
+          # Also zip the raw .app
+          zip -r ExpenseFlow.app.zip "$APP_PATH"
+
+      - name: Upload iOS .IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExpenseFlow-iOS-IPA
+          path: |
+            **/gen/ios/ExpenseFlow.ipa
+            **/gen/ios/ExpenseFlow.app.zip
+          retention-days: 14
